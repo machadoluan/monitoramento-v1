@@ -18,8 +18,6 @@ import { BlockWord } from './keyword/blockword.entity';
 import { EmailBlockEntity } from './email/emailsBlock.entity';
 import { ContratosModule } from './contratos/contratos.module';
 import { Contratos } from './contratos/contratos.entity';
-import { AuthModule } from './auth/auth.module';
-
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -44,8 +42,7 @@ import { AuthModule } from './auth/auth.module';
     KeywordModule,
     DebugModule,
     AlertModule,
-    ContratosModule,
-    AuthModule
+    ContratosModule
   ],
   controllers: [AppController, AuthController],
   providers: [ AppService],
