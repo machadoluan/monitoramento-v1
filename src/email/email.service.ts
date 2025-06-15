@@ -42,11 +42,15 @@ export class EmailService {
 
   private async enviarWhatsapp(telefone: string, dto: AlertDto) {
     const msgText = [
-      '⚠️ Alerta de No-break',
-      `🖥️ Aviso: ${dto.aviso}`,
-      `📅 Data: ${dto.data}`,
-      `⏰ Hora: ${dto.hora}`,
-      `📍 Localidade: ${dto.localidade}`,
+      '⚠️ *Alerta de No-break* ⚠️',
+      `🖥️ *Aviso*: ${dto.aviso}`,
+      `📅 *Data*: ${dto.data}`,
+      `⏰ *Hora*: ${dto.hora}`,
+      ``,
+      `Digite apenas o número:`,
+      ``,
+      `[1] Entrar em contato com um técnico`,
+      `[2] Estou ciente do alerta`,
     ].join('\n');
 
     const payload = {
@@ -57,10 +61,10 @@ export class EmailService {
 
     try {
       const res = await fetch(
-        `http://localhost:3000/whatsapp/send-message`,
+        `${process.env.WHATSAPPAPI}/whatsapp/send-message`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json'},
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify(payload),
         }
       );
@@ -101,7 +105,7 @@ export class EmailService {
       keyboard.push([
         // botão de chamada vira callback_data
         { text: '📞 Ligar', callback_data: `ligar:${tel}` },
-        { text: '💬 WhatsApp', url: `https://api.whatsapp.com/send?phone=${tel}&text=${waText}` }
+        { text: '💬 Avisar no whatsapp', callback_data: `avisar::${id}` }
       ]);
     }
 
@@ -297,7 +301,15 @@ export class EmailService {
           continue;
         }
 
-        const contatoNumerico = dto.contato.replace(/\D/g, '');
+        const contatoNumerico = this.extrairTelefone(dto.contato);
+
+        if (!contatoNumerico) {
+          this.logger.warn(`⚠️ Não foi possível extrair o telefone de: "${dto.contato}"`);
+          continue;
+        }
+
+        console.log(contatoNumerico)
+
 
         const cliente = await this.contratosService.findForNumber(contatoNumerico);
 
@@ -371,4 +383,17 @@ export class EmailService {
 
     return `${dia}/${mes}/${ano}`;
   }
+
+  private extrairTelefone(texto: string): string | null {
+    const somenteNumeros = texto.replace(/\D/g, '');
+
+    // Exemplo: 048991481613 -> verifica se começa com 0 e tem ao menos 11 dígitos (caso BR)
+    if (somenteNumeros.length >= 11 && somenteNumeros.startsWith('0')) {
+      return somenteNumeros.substring(1);
+    }
+
+    return somenteNumeros;
+  }
+
+
 }

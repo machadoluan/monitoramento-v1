@@ -18,6 +18,7 @@ import { BlockWord } from './keyword/blockword.entity';
 import { EmailBlockEntity } from './email/emailsBlock.entity';
 import { ContratosModule } from './contratos/contratos.module';
 import { Contratos } from './contratos/contratos.entity';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { Contratos } from './contratos/contratos.entity';
         host: configService.get<string>('DATABASE_HOST'),
         port: configService.get<number>('DATABASE_PORT'),
         username: configService.get<string>('DATABASE_USER'),
-        password: '@Rtshost123456',
+        password: configService.get<string>('DATABASE_PASSWORD'),
         database: configService.get<string>('DATABASE_NAME'),
         entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos],
         autoLoadEntities: true,
@@ -43,7 +44,8 @@ import { Contratos } from './contratos/contratos.entity';
     KeywordModule,
     DebugModule,
     AlertModule,
-    ContratosModule
+    ContratosModule,
+    AuthModule
   ],
   controllers: [AppController, AuthController],
   providers: [ AppService],

@@ -50,6 +50,69 @@ export class TelegramCommandService {
               }),
             });
           }
+
+          if (data.startsWith('avisar::')) {
+            const id = data.split('::')[1];
+
+            const alert = await this.alertService.findById(id)
+
+            if (!alert) {
+              return
+            }
+
+            const msgText = [
+              '⚠️ *Alerta de No-break* ⚠️',
+              `🖥️ *Aviso*: ${alert.aviso}`,
+              `📅 *Data*: ${alert.data}`,
+              `⏰ *Hora*: ${alert.hora}`,
+              ``,
+              `Digite apenas o número:`,
+              ``,
+              `[1] Entrar em contato com um técnico`,
+              `[2] Estou ciente do alerta`,
+            ].join('\n');
+
+
+            const contatoNumerico = this.extrairTelefone(alert.contato);
+
+            console.log(contatoNumerico
+            )
+
+            const payload = {
+              number: `55${contatoNumerico}`,
+              message: msgText,
+            };
+
+
+
+            try {
+              const res = await fetch(
+                `${process.env.WHATSAPPAPI}/whatsapp/send-message`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                  body: JSON.stringify(payload),
+                }
+              );
+              const data = await res.json();
+              if (!res.ok) {
+                this.logger.error(`📨 Resposta do whatasapp: ${JSON.stringify(data, null, 2)}`);
+              } else {
+                this.logger.log(`✅ Mensagem enviada ao Whatsapp com sucesso (numero: ${payload.number})`);
+                await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: `✅ Mensagem enviada ao Whatsapp com sucesso (numero: ${payload.number})`,
+                    parse_mode: 'Markdown',
+                  }),
+                });
+              }
+            } catch (err) {
+              this.logger.error(`💥 Exceção ao enviar mensagem para Telegram: ${err.message}`);
+            }
+          }
         }
       }
     } catch (e) {
@@ -267,5 +330,17 @@ export class TelegramCommandService {
       }),
     });
   }
+
+  private extrairTelefone(texto: string): string | null {
+    const somenteNumeros = texto.replace(/\D/g, '');
+
+    // Exemplo: 048991481613 -> verifica se começa com 0 e tem ao menos 11 dígitos (caso BR)
+    if (somenteNumeros.length >= 11 && somenteNumeros.startsWith('0')) {
+      return somenteNumeros.substring(1);
+    }
+
+    return somenteNumeros;
+  }
+
 
 }
