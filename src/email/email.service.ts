@@ -46,6 +46,7 @@ export class EmailService {
       `🖥️ *Aviso*: ${dto.aviso}`,
       `📅 *Data*: ${dto.data}`,
       `⏰ *Hora*: ${dto.hora}`,
+      `🔖 *Status*: ${dto.status}`,
       ``,
       `Digite apenas o número:`,
       ``,
@@ -89,6 +90,8 @@ export class EmailService {
       `🖥️ Sistema: ${dto.nomeSistema}`,
       `📞 Contato: ${dto.contato}`,
       `📍 Localidade: ${dto.localidade}`,
+      `🔖 Status: ${dto.status}`,
+
     ].join('\n');
 
     // extrai só dígitos do contato
@@ -103,8 +106,6 @@ export class EmailService {
         `Recebemos um alerta de ${dto.aviso}, está tudo bem?`
       );
       keyboard.push([
-        // botão de chamada vira callback_data
-        { text: '📞 Ligar', callback_data: `ligar:${tel}` },
         { text: '💬 Avisar no whatsapp', callback_data: `avisar::${id}` }
       ]);
     }
@@ -230,16 +231,23 @@ export class EmailService {
 
         // 2) Se não sobrou nada, tente o texto puro (allow ":" no valor)
         if (Object.keys(fields).length === 0 && parsed.text) {
-          parsed.text
-            .split(/\r?\n/)
-            .map(l => l.trim())
-            .filter(Boolean)
-            .forEach(line => {
+          const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          let currentKey = '';
+          for (const line of lines) {
+            if (line.includes(':')) {
               const [rawKey, ...rest] = line.split(':');
               const val = rest.join(':').trim();
-              if (rawKey && val) fields[rawKey.trim()] = val;
-            });
+
+              if (rawKey) {
+                currentKey = rawKey.trim();
+                fields[currentKey] = val;
+              }
+            } else if (currentKey) {
+              fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
+            }
+          }
         }
+
 
         // ✂️ Limpeza do corpo para salvar no banco e exibir no Telegram
         const corpoTexto = (parsed.text || parsed.html || '')

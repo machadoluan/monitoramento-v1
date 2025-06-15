@@ -65,6 +65,7 @@ export class TelegramCommandService {
               `🖥️ *Aviso*: ${alert.aviso}`,
               `📅 *Data*: ${alert.data}`,
               `⏰ *Hora*: ${alert.hora}`,
+              `🔖 *Status*: ${alert.status}`,
               ``,
               `Digite apenas o número:`,
               ``,
@@ -97,6 +98,15 @@ export class TelegramCommandService {
               const data = await res.json();
               if (!res.ok) {
                 this.logger.error(`📨 Resposta do whatasapp: ${JSON.stringify(data, null, 2)}`);
+                await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    chat_id: chatId,
+                    text: `❌ Erro ao enviar mensagem no whatsapp: ${data.error}`,
+                    parse_mode: 'Markdown',
+                  }),
+                });
               } else {
                 this.logger.log(`✅ Mensagem enviada ao Whatsapp com sucesso (numero: ${payload.number})`);
                 await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -341,6 +351,4 @@ export class TelegramCommandService {
 
     return somenteNumeros;
   }
-
-
 }
