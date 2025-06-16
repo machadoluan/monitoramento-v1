@@ -311,15 +311,11 @@ export class EmailService {
 
         const contatoNumerico = this.extrairTelefone(dto.contato);
 
-        if (!contatoNumerico) {
-          this.logger.warn(`⚠️ Não foi possível extrair o telefone de: "${dto.contato}"`);
-          continue;
-        }
 
         console.log(contatoNumerico)
 
+        const cliente = contatoNumerico ? await this.contratosService.findForNumber(contatoNumerico) : null;
 
-        const cliente = await this.contratosService.findForNumber(contatoNumerico);
 
         console.log(cliente)
 
@@ -330,11 +326,9 @@ export class EmailService {
             const tagsCliente: string[] = JSON.parse(cliente.tags || '[]');
 
             if (tagsCliente.length === 0) {
-              // usa tags globais
               tagsParaChecar = (await this.kw.getAll()).map(tag => tag.toUpperCase());
               this.logger.log(`📌 Cliente ${cliente.nome} sem tags personalizadas, usando tags globais`);
             } else {
-              // usa somente as tags do cliente
               tagsParaChecar = tagsCliente.map(tag => tag.toUpperCase());
               this.logger.log(`📌 Cliente ${cliente.nome} com tags personalizadas: ${tagsCliente.join(', ')}`);
             }
@@ -342,8 +336,13 @@ export class EmailService {
             const tagsEncontradas = tagsParaChecar.filter(tag => U.includes(tag));
 
             if (tagsEncontradas.length > 0) {
-              await this.enviarWhatsapp(`55${contatoNumerico}`, dto)
-              this.logger.log(`✅ Alerta enviado para ${cliente.nome} (tags: ${tagsEncontradas.join(', ')})`);
+              // somente tenta enviar whatsapp se tiver telefone
+              if (contatoNumerico) {
+                await this.enviarWhatsapp(`55${contatoNumerico}`, dto);
+                this.logger.log(`✅ Alerta enviado para ${cliente.nome} (tags: ${tagsEncontradas.join(', ')})`);
+              } else {
+                this.logger.warn(`⚠️ Não foi possível extrair o telefone de: "${dto.contato}". WhatsApp não enviado.`);
+              }
             } else {
               this.logger.log(`❌ Cliente ${cliente.nome} ignorado - nenhuma tag correspondente no e-mail`);
             }
@@ -351,6 +350,7 @@ export class EmailService {
             this.logger.error(`Erro ao processar tags do cliente ${cliente.nome}: ${error.message}`);
           }
         }
+
 
 
         if (relevante) {
