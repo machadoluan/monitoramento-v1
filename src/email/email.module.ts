@@ -13,10 +13,12 @@ import { EmailEntity } from './email.entity';
 import { EmailBlockEntity } from './emailsBlock.entity';
 import { ContratosService } from 'src/contratos/contratos.service';
 import { ContratosModule } from 'src/contratos/contratos.module';
+import { EmailGroup } from '../email-group/email-group.entity';
+import { EmailGroupService } from 'src/email-group/email-group.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AlertEntity, EmailEntity, EmailBlockEntity]),  
+    TypeOrmModule.forFeature([AlertEntity, EmailEntity, EmailBlockEntity, EmailGroup]),  
     KeywordModule,                          
     AlertModule,   
     ContratosModule
@@ -24,6 +26,7 @@ import { ContratosModule } from 'src/contratos/contratos.module';
   providers: [
     EmailService,
     EmailRegistryService,
+    EmailGroupService
   ],
   controllers: [EmailController],
   exports: [EmailService, EmailRegistryService],

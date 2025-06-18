@@ -12,6 +12,7 @@ import { AlertDto } from 'src/alert/dto/alert.dto';
 import { EmailRegistryService } from './email-registry.service';
 import * as cheerio from 'cheerio';
 import { ContratosService } from 'src/contratos/contratos.service';
+import { EmailGroupService } from 'src/email-group/email-group.service';
 
 dotenv.config();
 
@@ -22,7 +23,8 @@ export class EmailService {
     private readonly kw: KeywordService,
     private readonly alertService: AlertService,
     private readonly emailRegistryService: EmailRegistryService,
-    private readonly contratosService: ContratosService
+    private readonly contratosService: ContratosService,
+    private readonly emailGroupService: EmailGroupService
   ) { }
 
   private processing = false;
@@ -198,6 +200,8 @@ export class EmailService {
         { bodies: [''], struct: true, markSeen: true },
       );
 
+      const grupos = await this.emailGroupService.findAll();
+
       for (const msg of messages) {
         const part = msg.parts.find(p => p.which === '');
         if (!part) continue;
@@ -294,6 +298,7 @@ export class EmailService {
           mensagemOriginal: corpoTexto,
         };
 
+
         if (registrosBlock.some(r => r.email === remetente)) {
           this.logger.log(`🗑️ Ignorado: ${assunto}, pois o e-mail ${remetente} está bloqueado`);
           continue;
@@ -355,7 +360,26 @@ export class EmailService {
 
         if (relevante) {
           const saved = await this.alertService.create(dto);
-          await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
+          let enviadoParaGrupo = false;
+
+
+          for (const grupo of grupos) {
+            const tagsCliente: string[] = JSON.parse(grupo.keywords || '[]');
+            const palavrasGrupo = tagsCliente.map(k => k.toUpperCase());
+            const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
+
+            if (pertenceAoGrupo) {
+              await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
+              this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
+              enviadoParaGrupo = true;
+            }
+          }
+
+          if (!enviadoParaGrupo) {
+            await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
+            this.logger.log(`📬 Alerta enviado para chatId padrão do remetente ${reg.chatId}`);
+          }
+
           console.log(`relevante encontrada ${palavrasEncontradas}`)
         } else {
           this.logger.log(`🗑️ Ignorado: ${assunto}`);

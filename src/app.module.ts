@@ -18,6 +18,8 @@ import { BlockWord } from './keyword/blockword.entity';
 import { EmailBlockEntity } from './email/emailsBlock.entity';
 import { ContratosModule } from './contratos/contratos.module';
 import { Contratos } from './contratos/contratos.entity';
+import { EmailGroupModule } from './email-group/email-group.module';
+import { EmailGroup } from './email-group/email-group.entity';
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -29,7 +31,7 @@ import { Contratos } from './contratos/contratos.entity';
         username: configService.get<string>('DATABASE_USER'),
         password: configService.get<string>('DATABASE_PASSWORD'),
         database: configService.get<string>('DATABASE_NAME'),
-        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos],
+        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos, EmailGroup],
         autoLoadEntities: true,
         // synchronize: true,
       }),
@@ -42,7 +44,8 @@ import { Contratos } from './contratos/contratos.entity';
     KeywordModule,
     DebugModule,
     AlertModule,
-    ContratosModule
+    ContratosModule,
+    EmailGroupModule
   ],
   controllers: [AppController, AuthController],
   providers: [ AppService],
