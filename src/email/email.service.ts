@@ -356,7 +356,34 @@ export class EmailService {
           }
         }
 
+        // Envia alerta para os dois grupos
 
+        // if (relevante) {
+        //   const saved = await this.alertService.create(dto);
+
+        //   // Envia para todos os grupos específicos cujas keywords batem
+        //   for (const grupo of grupos) {
+        //     const palavrasGrupo = Array.isArray(grupo.keywords)
+        //       ? grupo.keywords.map(k => k.toUpperCase())
+        //       : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
+        //     const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
+
+        //     if (pertenceAoGrupo) {
+        //       await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
+        //       this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
+        //     }
+        //   }
+
+        //   // Sempre envia também para o grupo geral (chatId do remetente)
+        //   await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
+        //   this.logger.log(`📬 Alerta enviado para o grupo geral da empresa (chatId: ${reg.chatId})`);
+
+        //   console.log(`relevante encontrada ${palavrasEncontradas}`);
+        // } else {
+        //   this.logger.log(`🗑️ Ignorado: ${assunto}`);
+        // }
+
+        // Envia alerta apenas para o grupo responsavel.
 
         if (relevante) {
           const saved = await this.alertService.create(dto);
@@ -364,8 +391,10 @@ export class EmailService {
 
 
           for (const grupo of grupos) {
-            const tagsCliente: string[] = JSON.parse(grupo.keywords || '[]');
-            const palavrasGrupo = tagsCliente.map(k => k.toUpperCase());
+            const palavrasGrupo = Array.isArray(grupo.keywords)
+            ? grupo.keywords.map(k => k.toUpperCase())
+            : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
+          
             const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
 
             if (pertenceAoGrupo) {
