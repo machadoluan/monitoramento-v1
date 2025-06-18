@@ -1,4 +1,4 @@
-import { EmailGrupsService } from './../../dashboard_v1/src/app/services/email-grups.service';
+
 
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
@@ -49,7 +49,6 @@ import { EmailGroup } from './email-group/email-group.entity';
     EmailGroupModule
   ],
   controllers: [AppController, AuthController],
-  providers: [
-    EmailGrupsService, AppService],
+  providers: [AppService],
 })
 export class AppModule { }
