@@ -21,6 +21,8 @@ import { ContratosModule } from './contratos/contratos.module';
 import { Contratos } from './contratos/contratos.entity';
 import { EmailGroupModule } from './email-group/email-group.module';
 import { EmailGroup } from './email-group/email-group.entity';
+import { EquipamentosModule } from './equipamentos/equipamentos.module';
+import { Equipamento } from './equipamentos/equipamentos.entity';
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -32,9 +34,9 @@ import { EmailGroup } from './email-group/email-group.entity';
         username: configService.get<string>('DATABASE_USER'),
         password: configService.get<string>('DATABASE_PASSWORD'),
         database: configService.get<string>('DATABASE_NAME'),
-        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos, EmailGroup],
+        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos, EmailGroup, Equipamento],
         autoLoadEntities: true,
-        // synchronize: true,
+        synchronize: false,
       }),
       inject: [ConfigService],
     }),
@@ -46,7 +48,9 @@ import { EmailGroup } from './email-group/email-group.entity';
     DebugModule,
     AlertModule,
     ContratosModule,
-    EmailGroupModule
+    EmailGroupModule,
+    EquipamentosModule
+
   ],
   controllers: [AppController, AuthController],
   providers: [AppService],
