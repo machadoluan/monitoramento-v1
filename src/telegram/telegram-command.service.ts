@@ -131,11 +131,17 @@ export class TelegramCommandService {
   }
 
   private async handle(chatId: number, text: string) {
+    if (!text.startsWith('/')) {
+      // Ignora mensagens que não são comandos
+      return;
+    }
+
     const match = text.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
     const [cmd, ...args] = match.map(t => t.replace(/(^"|"$)/g, ''));
 
     const word = args.join(' ').trim();
     let resp: string;
+
 
     try {
       switch (cmd.toLowerCase()) {
@@ -299,6 +305,17 @@ export class TelegramCommandService {
               resp = `✅ Palavra '${wordToUnblock.toUpperCase()}' desbloqueada com sucesso.`;
             } catch {
               resp = `⚠️ Não encontrei a palavra '${wordToUnblock.toUpperCase()}' para desbloquear.`;
+            }
+          }
+          break;
+
+        case '/blockwords':
+          {
+            const all = await this.kw.getAllBlock();
+            if (all.length === 0) {
+              resp = `🔑 Nenhuma palavra bloqueada ainda.`;
+            } else {
+              resp = `🔑 Palavras bloqueadas:\n\n` + all.map(w => `• ${w}`).join('\n');
             }
           }
           break;

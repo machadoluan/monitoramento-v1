@@ -238,14 +238,13 @@ export class EmailService {
           const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
           let currentKey = '';
           for (const line of lines) {
-            if (line.includes(':')) {
-              const [rawKey, ...rest] = line.split(':');
-              const val = rest.join(':').trim();
-
-              if (rawKey) {
-                currentKey = rawKey.trim();
-                fields[currentKey] = val;
-              }
+            const match = line.match(/^(.+?)\s*:\s*(.+)$/);
+            if (match) {
+              const [, rawKey, val] = match;
+              currentKey = rawKey.trim();
+              fields[currentKey] = val.trim();
+            } else if (currentKey) {
+              fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
             } else if (currentKey) {
               fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
             }
@@ -269,8 +268,8 @@ export class EmailService {
         const palavrasEncontradasBlock = palavrasChaveBlock.filter(k => U.includes(k));
 
         const rawDataHora = fields['Data/Hora'] || fields['Date/Time'] || '';
-        const rawData = fields['Date'] || '';
-        const rawHora = fields['Time'] || fields['hora'] || '';
+        const rawData = fields['Date'] || fields['Data'] || '';
+        const rawHora = fields['Time'] || fields['Hora'] || '';
 
         const { data: data1, hora: hora1 } = this.extrairDataHora(rawDataHora);
         const { data: data2 } = this.extrairDataHora(rawData);
@@ -279,8 +278,8 @@ export class EmailService {
         const data = data1 || data2 || '(sem data)';
         const hora = hora1 || hora2 || '';
 
-        const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || '';
-        const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || '';
+        const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || fields['Contato'] || '';
+        const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || fields['Local'] || '';
 
 
         const [contato, localidadeExtra] = contatoRaw.split(/System Location:/i);
@@ -291,7 +290,7 @@ export class EmailService {
           data: this.formatarDataParaBR(data),
           hora: hora,
           ip: fields['IP'] || '(sem IP)',
-          nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || '(sem nome)',
+          nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || fields['Nome'] || '(sem nome)',
           contato: contato?.trim() || '(sem contato)',
           localidade: localidade || '(sem localidade)',
           status: fields['Status'] || fields['Code'] || '(sem status)',
@@ -309,10 +308,6 @@ export class EmailService {
           continue;
         }
 
-        if (/mailer-daemon|postmaster/i.test(remetente) || /delivery status|undelivered|falha/i.test(assunto)) {
-          this.logger.log(`📭 Ignorado: e-mail de erro de entrega`);
-          continue;
-        }
 
         const contatoNumerico = this.extrairTelefone(dto.contato);
 
@@ -392,9 +387,9 @@ export class EmailService {
 
           for (const grupo of grupos) {
             const palavrasGrupo = Array.isArray(grupo.keywords)
-            ? grupo.keywords.map(k => k.toUpperCase())
-            : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
-          
+              ? grupo.keywords.map(k => k.toUpperCase())
+              : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
+
             const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
 
             if (pertenceAoGrupo) {
