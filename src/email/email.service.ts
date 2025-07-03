@@ -83,23 +83,17 @@ export class EmailService {
   }
 
 
-  // Substitua sua função existente por esta
   private async enviarTelegramComOuSemCorpo(dto: AlertDto, id: string, chatId: string) {
-    // Pega os detalhes dinâmicos do alerta
-    const { emoji, title, summary } = this.getAlertDetails(dto);
-
     const msgText = [
-      `${emoji} *${title}*`, // Título dinâmico e em negrito
-      `_${summary}_`, // Resumo em itálico
-      `---`,
-      `🔖 *Status:* \`${dto.status}\``,
-      `🖥️ *Sistema:* ${dto.nomeSistema}`,
-      `📍 *Localidade:* ${dto.localidade}`,
-      ``, // Linha em branco para espaçamento
-      `📅 *Data:* ${dto.data}`,
-      `⏰ *Hora:* ${dto.hora}`,
-      ``,
-      `📞 *Contato:* ${dto.contato}`,
+      '⚠️ Alerta de No-break',
+      `🖥️ Aviso: ${dto.aviso}`,
+      `📅 Data: ${dto.data}`,
+      `⏰ Hora: ${dto.hora}`,
+      `🖥️ Sistema: ${dto.nomeSistema}`,
+      `📞 Contato: ${dto.contato}`,
+      `📍 Localidade: ${dto.localidade}`,
+      `🔖 Status: ${dto.status}`,
+
     ].join('\n');
 
     // extrai só dígitos do contato
@@ -110,16 +104,17 @@ export class EmailService {
     ];
 
     if (tel.length >= 8) {
+      const waText = encodeURIComponent(
+        `Recebemos um alerta de ${dto.aviso}, está tudo bem?`
+      );
       keyboard.push([
-        { text: '💬 Avisar cliente no WhatsApp', callback_data: `avisar::${id}` }
+        { text: '💬 Avisar no whatsapp', callback_data: `avisar::${id}` }
       ]);
     }
 
-    // IMPORTANTE: Adicione o 'parse_mode: Markdown' para que a formatação funcione
     const payload = {
       chat_id: chatId,
       text: msgText,
-      parse_mode: 'Markdown', // Habilita negrito, itálico, etc.
       reply_markup: {
         inline_keyboard: keyboard
       },
@@ -183,195 +178,194 @@ export class EmailService {
     const registrosBlock = await this.emailRegistryService.listBlock();
 
     for (const reg of registros) {
-      try {
-        const host = reg.email.includes('@gmail.com')
-          ? 'imap.gmail.com'
-          : 'imap.kinghost.net';
+      const host = reg.email.includes('@gmail.com')
+        ? 'imap.gmail.com'
+        : 'imap.kinghost.net';
 
-        this.logger.log(`Conectando ao IMAP para ${reg.email}...`);
-        const connection = await Imap.connect({
-          imap: {
-            user: reg.email,
-            password: reg.senha,
-            host,
-            port: 993,
-            tls: true,
-            tlsOptions: { rejectUnauthorized: false },
-          },
-        });
+      const connection = await Imap.connect({
+        imap: {
+          user: reg.email,
+          password: reg.senha,
+          host,
+          port: 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+        },
+      });
 
-        await connection.openBox('INBOX');
+      await connection.openBox('INBOX');
+      const messages = await connection.search(
+        [['UNSEEN']],
+        { bodies: [''], struct: true, markSeen: true },
+      );
 
-        const messages = await connection.search(
-          [['UNSEEN']],
-          { bodies: [''], struct: true, markSeen: true },
-        );
+      const grupos = await this.emailGroupService.findAll();
+      const parsedEmails: {
+        dto: AlertDto,
+        parsed: ParsedMail,
+        reg: any,
+        remetente: string,
+        U: string,
+        palavrasEncontradas: string[],
+      }[] = [];
 
-        if (messages.length > 0) {
-          this.logger.log(`[${reg.email}] Encontrados ${messages.length} e-mails não lidos.`);
+      for (const msg of messages) {
+        const part = msg.parts.find(p => p.which === '');
+        if (!part) continue;
+
+        const raw = Buffer.isBuffer(part.body)
+          ? part.body
+          : Buffer.from(part.body as string, 'utf-8');
+
+        const parsed: ParsedMail = await simpleParser(raw);
+
+        const assunto = parsed.subject?.trim() || '(sem assunto)';
+        const remetente = parsed.from?.value?.[0]?.address || '(sem remetente)';
+
+        const fields: Record<string, string> = {};
+
+        if (parsed.html) {
+          const $ = cheerio.load(parsed.html);
+          $('table tr').each((_, row) => {
+            const cells = $(row).find('td');
+            if (cells.length >= 2) {
+              const key = cells.eq(0).text().trim();
+              const value = cells.eq(1).text().trim();
+              if (key) fields[key] = value;
+            }
+          });
         }
 
-        // PASSO 1: Fazer o parse de todas as mensagens para extrair os dados
-        // Usamos Promise.all para fazer isso de forma mais rápida e paralela.
-        const parsedEmails = await Promise.all(
-          messages.map(async (msg) => {
-            const part = msg.parts.find(p => p.which === '');
-            if (!part) return null;
-
-            const raw = Buffer.isBuffer(part.body)
-              ? part.body
-              : Buffer.from(part.body as string, 'utf-8');
-
-            // Retorna o objeto completo do e-mail após o parse
-            return await simpleParser(raw);
-          })
-        );
-
-        // Filtramos e-mails que possam ter falhado no parse
-        const validEmails = parsedEmails.filter(p => p !== null) as ParsedMail[];
-
-        // PASSO 2: Ordenar os e-mails pela data (do mais antigo para o mais novo)
-        // Esta é a etapa que resolve o problema da ordem de notificação.
-        validEmails.sort((a, b) => {
-          const dateA = a.date || new Date(0); // Garante que e-mails sem data não quebrem o sort
-          const dateB = b.date || new Date(0);
-          return dateA.getTime() - dateB.getTime();
-        });
-
-        this.logger.log(`E-mails ordenados por data. Iniciando processamento...`);
-
-        const grupos = await this.emailGroupService.findAll();
-
-        // PASSO 3: Iterar sobre a lista JÁ ORDENADA e aplicar a lógica de negócio
-        for (const parsed of validEmails) {
-          const assunto = parsed.subject?.trim() || '(sem assunto)';
-          const remetente = parsed.from?.value?.[0]?.address || '(sem remetente)';
-
-          const fields: Record<string, string> = {};
-
-          if (parsed.html) {
-            const $ = cheerio.load(parsed.html);
-            $('table tr').each((_, row) => {
-              const cells = $(row).find('td');
-              if (cells.length >= 2) {
-                const key = cells.eq(0).text().trim();
-                const value = cells.eq(1).text().trim();
-                if (key) fields[key] = value;
-              }
-            });
-          }
-
-          if (Object.keys(fields).length === 0 && parsed.text) {
-            const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-            let currentKey = '';
-            for (const line of lines) {
-              const match = line.match(/^(.+?)\s*:\s*(.+)$/);
-              if (match) {
-                const [, rawKey, val] = match;
+        if (Object.keys(fields).length === 0 && parsed.text) {
+          const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          let currentKey = '';
+          for (const line of lines) {
+            if (line.includes(':')) {
+              const [rawKey, ...rest] = line.split(':');
+              const val = rest.join(':').trim();
+              if (rawKey) {
                 currentKey = rawKey.trim();
-                fields[currentKey] = val.trim();
-              } else if (currentKey) {
-                fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
+                fields[currentKey] = val;
               }
+            } else if (currentKey) {
+              fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
             }
           }
+        }
 
-          const corpoTexto = (parsed.text || parsed.html || '')
-            .replace(/<[^>]*>/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
+        const corpoTexto = (parsed.text || parsed.html || '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
 
-          const U = (assunto + ' ' + corpoTexto).toUpperCase();
-          const palavrasChave = await this.kw.getAll();
-          const relevante = palavrasChave.some(k => U.includes(k));
-          const palavrasChaveBlock = await this.kw.getAllBlock();
-          const relevanteBlock = palavrasChaveBlock.some(k => U.includes(k));
-          const palavrasEncontradas = palavrasChave.filter(k => U.includes(k));
-          const palavrasEncontradasBlock = palavrasChaveBlock.filter(k => U.includes(k));
+        const U = (assunto + ' ' + corpoTexto).toUpperCase();
+        const palavrasChave = await this.kw.getAll();
+        const palavrasChaveBlock = await this.kw.getAllBlock();
+        const relevante = palavrasChave.some(k => U.includes(k));
+        const relevanteBlock = palavrasChaveBlock.some(k => U.includes(k));
 
-          const rawDataHora = fields['Data/Hora'] || fields['Date/Time'] || '';
-          const rawData = fields['Date'] || fields['Data'] || '';
-          const rawHora = fields['Time'] || fields['Hora'] || '';
+        const palavrasEncontradas = palavrasChave.filter(k => U.includes(k));
+        const palavrasEncontradasBlock = palavrasChaveBlock.filter(k => U.includes(k));
 
-          const { data: data1, hora: hora1 } = this.extrairDataHora(rawDataHora);
-          const { data: data2 } = this.extrairDataHora(rawData);
-          const { hora: hora2 } = this.extrairDataHora(rawHora);
+        const rawDataHora = fields['Data/Hora'] || fields['Date/Time'] || '';
+        const rawData = fields['Date'] || '';
+        const rawHora = fields['Time'] || fields['hora'] || '';
+        const { data: data1, hora: hora1 } = this.extrairDataHora(rawDataHora);
+        const { data: data2 } = this.extrairDataHora(rawData);
+        const { hora: hora2 } = this.extrairDataHora(rawHora);
+        const data = data1 || data2 || '(sem data)';
+        const hora = hora1 || hora2 || '';
 
-          const data = data1 || data2 || '(sem data)';
-          const hora = hora1 || hora2 || '';
+        const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || '';
+        const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || '';
+        const [contato, localidadeExtra] = contatoRaw.split(/System Location:/i);
+        const localidade = localidadeExtra?.trim() || localidadeRaw;
 
-          const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || fields['Contato'] || '';
-          const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || fields['Local'] || '';
-          const [contato, localidadeExtra] = contatoRaw.split(/System Location:/i);
-          const localidade = localidadeExtra?.trim() || localidadeRaw;
+        const dto: AlertDto = {
+          time: `${data} ${hora}`.trim(),
+          aviso: assunto,
+          data: this.formatarDataParaBR(data),
+          hora: hora,
+          ip: fields['IP'] || '(sem IP)',
+          nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || '(sem nome)',
+          contato: contato?.trim() || '(sem contato)',
+          localidade: localidade || '(sem localidade)',
+          status: fields['Status'] || fields['Code'] || '(sem status)',
+          mensagemOriginal: corpoTexto,
+        };
 
-          const dto: AlertDto = {
-            time: `${data} ${hora}`.trim(),
-            aviso: assunto,
-            data: this.formatarDataParaBR(data),
-            hora: hora,
-            ip: fields['IP'] || '(sem IP)',
-            nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || fields['Nome'] || '(sem nome)',
-            contato: contato?.trim() || '(sem contato)',
-            localidade: localidade || '(sem localidade)',
-            status: fields['Status'] || fields['Code'] || '(sem status)',
-            mensagemOriginal: corpoTexto,
-          };
+        if (
+          registrosBlock.some(r => r.email === remetente) ||
+          relevanteBlock ||
+          /mailer-daemon|postmaster/i.test(remetente) ||
+          /delivery status|undelivered|falha/i.test(assunto)
+        ) {
+          continue;
+        }
 
-          if (registrosBlock.some(r => r.email === remetente)) {
-            this.logger.log(`🗑️ Ignorado (remetente bloqueado): ${assunto} de ${remetente}`);
-            continue;
-          }
-
-          if (relevanteBlock) {
-            this.logger.log(`🗑️ Ignorado (palavra bloqueada: ${palavrasEncontradasBlock}): ${assunto}`);
-            continue;
-          }
-
-          const contatoNumerico = this.extrairTelefone(dto.contato);
-          const cliente = contatoNumerico ? await this.contratosService.findForNumber(contatoNumerico) : null;
-
-          if (cliente) {
-            // ... sua lógica de cliente e envio de WhatsApp ...
-          }
-
-          if (relevante) {
-            this.logger.log(`✅ Relevante: "${assunto}". Processando envio...`);
-            const saved = await this.alertService.create(dto);
-            let enviadoParaGrupo = false;
-
-            for (const grupo of grupos) {
-              const palavrasGrupo = Array.isArray(grupo.keywords)
-                ? grupo.keywords.map(k => k.toUpperCase())
-                : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
-
-              const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
-
-              if (pertenceAoGrupo) {
-                await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
-                this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
-                enviadoParaGrupo = true;
-              }
-            }
-
-            if (!enviadoParaGrupo) {
-              await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
-              this.logger.log(`📬 Alerta enviado para chatId padrão do remetente ${reg.chatId}`);
-            }
-            console.log(`Palavras-chave encontradas: ${palavrasEncontradas}`);
-          } else {
-            this.logger.log(`🗑️ Ignorado (não relevante): ${assunto}`);
-          }
-        } // Fim do loop for (const parsed of validEmails)
-
-        await connection.end();
-        this.logger.log(`Desconectado de ${reg.email}.`);
-
-      } catch (error) {
-        this.logger.error(`💥 Erro fatal no processamento de e-mails para ${reg.email}: ${error.message}`, error.stack);
+        if (relevante) {
+          parsedEmails.push({ dto, parsed, reg, remetente, U, palavrasEncontradas });
+        }
       }
-    } // Fim do loop for (const reg of registros)
+
+      // Ordena pela data/hora do evento
+      parsedEmails.sort((a, b) => {
+        const aTime = new Date(a.dto.time).getTime();
+        const bTime = new Date(b.dto.time).getTime();
+        return aTime - bTime;
+      });
+
+      for (const item of parsedEmails) {
+        const { dto, parsed, reg, U, palavrasEncontradas } = item;
+
+        const contatoNumerico = this.extrairTelefone(dto.contato);
+        const cliente = contatoNumerico ? await this.contratosService.findForNumber(contatoNumerico) : null;
+
+        if (cliente) {
+          let tagsParaChecar: string[] = [];
+
+          try {
+            const tagsCliente: string[] = JSON.parse(cliente.tags || '[]');
+            tagsParaChecar = tagsCliente.length
+              ? tagsCliente.map(t => t.toUpperCase())
+              : (await this.kw.getAll()).map(t => t.toUpperCase());
+
+            const tagsEncontradas = tagsParaChecar.filter(tag => U.includes(tag));
+
+            if (tagsEncontradas.length > 0 && contatoNumerico) {
+              await this.enviarWhatsapp(`55${contatoNumerico}`, dto);
+              this.logger.log(`✅ Alerta enviado para ${cliente.nome} (tags: ${tagsEncontradas.join(', ')})`);
+            }
+          } catch (error) {
+            this.logger.error(`Erro nas tags do cliente ${cliente.nome}: ${error.message}`);
+          }
+        }
+
+        const saved = await this.alertService.create(dto);
+        const grupos = await this.emailGroupService.findAll();
+        let enviadoParaGrupo = false;
+
+        for (const grupo of grupos) {
+          const palavrasGrupo = Array.isArray(grupo.keywords)
+            ? grupo.keywords.map(k => k.toUpperCase())
+            : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
+
+          const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
+          if (pertenceAoGrupo) {
+            await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
+            enviadoParaGrupo = true;
+          }
+        }
+
+        if (!enviadoParaGrupo) {
+          await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
+        }
+      }
+
+      await connection.end();
+    }
   }
+
 
 
   @Cron(CronExpression.EVERY_5_SECONDS)
@@ -410,33 +404,5 @@ export class EmailService {
     return somenteNumeros;
   }
 
-
-  // Adicione esta função dentro da sua classe EmailService
-  private getAlertDetails(dto: AlertDto): { emoji: string; title: string; summary: string } {
-    const statusUpper = (dto.status || '').toUpperCase();
-    const avisoUpper = (dto.aviso || '').toUpperCase();
-
-    if (statusUpper.includes('NORMAL') || avisoUpper.includes('NORMAL')) {
-      return {
-        emoji: '✅',
-        title: `NORMALIZADO: ${dto.aviso}`,
-        summary: 'Um evento anterior foi resolvido.'
-      };
-    }
-    if (statusUpper.includes('OVERRUN') || statusUpper.includes('FAIL') || avisoUpper.includes('CRITICAL')) {
-      return {
-        emoji: '🚨',
-        title: `ALERTA CRÍTICO: ${dto.aviso}`,
-        summary: 'Um evento crítico foi detectado e requer atenção.'
-      };
-    }
-
-    // Padrão para outros tipos de alerta
-    return {
-      emoji: '⚠️',
-      title: `ALERTA: ${dto.aviso}`,
-      summary: 'Um novo evento foi registrado no sistema.'
-    };
-  }
 
 }
