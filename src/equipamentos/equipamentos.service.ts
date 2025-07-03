@@ -5,7 +5,6 @@ import { Repository } from 'typeorm';
 import * as Imap from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import * as cheerio from 'cheerio';
-import { EmailRegistryService } from 'src/email/email-registry.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as moment from 'moment-timezone';
 
@@ -14,8 +13,6 @@ export class EquipamentosService {
     constructor(
         @InjectRepository(Equipamento)
         private readonly repo: Repository<Equipamento>,
-        private readonly emailRegistryService: EmailRegistryService,
-
     ) { }
 
     async registerOrUpdate(data: Partial<Equipamento>): Promise<Equipamento> {
@@ -53,13 +50,9 @@ export class EquipamentosService {
         return this.repo.find({ order: { nome: 'ASC' } });
     }
 
-    @Cron(CronExpression.EVERY_MINUTE
-    )
+    @Cron('*/10 * * * * *') // A cada 10 segundos
     async sincronizarEquipamentosPorEmail(): Promise<void> {
-        console.log('⏳ Iniciando sincronização de equipamentos por e-mail...');
-
-        const doisDiasAtras = new Date();
-        doisDiasAtras.setDate(doisDiasAtras.getDate() - 2);
+        console.log('⏳ Buscando novos e-mails...');
 
         try {
             const connection = await Imap.connect({
@@ -76,11 +69,11 @@ export class EquipamentosService {
 
             await connection.openBox('INBOX');
 
-            const messages = await connection.search(
-                ['UNSEEN'],
-                { bodies: [''], struct: true, markSeen: true }, // marcar como lido após processar
-            );
-
+            const messages = await connection.search(['UNSEEN'], {
+                bodies: [''],
+                struct: true,
+                markSeen: true,
+            });
 
             for (const msg of messages) {
                 const part = msg.parts.find(p => p.which === '');
@@ -91,10 +84,9 @@ export class EquipamentosService {
                     : Buffer.from(part.body as string, 'utf-8');
 
                 const parsed = await simpleParser(raw);
-
                 const fields: Record<string, string> = {};
 
-                // HTML table parser
+                // Parse HTML
                 if (parsed.html) {
                     const $ = cheerio.load(parsed.html);
                     $('table tr').each((_, row) => {
@@ -107,7 +99,7 @@ export class EquipamentosService {
                     });
                 }
 
-                // Fallback: plain text
+                // Fallback para texto puro
                 if (Object.keys(fields).length === 0 && parsed.text) {
                     parsed.text
                         .split(/\r?\n/)
@@ -121,12 +113,10 @@ export class EquipamentosService {
                 }
 
                 const dataEmailTexto = fields['Date/Time'] || fields['Data/Hora'];
-
                 const ultimaAtualizacao = dataEmailTexto
                     ? moment.tz(dataEmailTexto, 'YYYY/MM/DD HH:mm:ss', 'America/Sao_Paulo').toDate()
                     : new Date();
 
-                // Registra ou atualiza no-break
                 await this.registerOrUpdate({
                     nome: fields['Nome Sistema'] || fields['System Name'] || '(sem nome)',
                     localidade: fields['Localidade Sistema'] || fields['System Location'] || '(sem localidade)',
@@ -137,20 +127,19 @@ export class EquipamentosService {
             }
 
             await connection.end();
-            console.log('✅ Sincronização finalizada com sucesso!');
+            console.log('✅ Sincronização concluída!');
         } catch (err) {
-            console.error('❌ Erro ao conectar ou processar e-mail:', err.message);
+            console.error('❌ Erro na sincronização de e-mails:', err.message);
         }
     }
 
-    @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+    @Cron(CronExpression.EVERY_HOUR)
     async verificarEquipamentosInativos() {
         const equipamentos = await this.repo.find();
         const agora = new Date();
 
         for (const eq of equipamentos) {
             const diff = agora.getTime() - new Date(eq.ultimaAtualizacao).getTime();
-
             const offline = diff > 2 * 24 * 60 * 60 * 1000; // 2 dias
 
             if (offline && eq.status !== 'offline') {
@@ -166,5 +155,4 @@ export class EquipamentosService {
             }
         }
     }
-
 }

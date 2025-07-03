@@ -85,16 +85,22 @@ export class EmailService {
 
   private async enviarTelegramComOuSemCorpo(dto: AlertDto, id: string, chatId: string) {
     const msgText = [
-      '⚠️ Alerta de No-break',
-      `🖥️ Aviso: ${dto.aviso}`,
-      `📅 Data: ${dto.data}`,
-      `⏰ Hora: ${dto.hora}`,
-      `🖥️ Sistema: ${dto.nomeSistema}`,
-      `📞 Contato: ${dto.contato}`,
-      `📍 Localidade: ${dto.localidade}`,
-      `🔖 Status: ${dto.status}`,
-
+      ' *PWM BOT - Alerta de No-break* ',
+      '',
+      `⚠️ *Aviso:* ${this.formatarAviso(dto.aviso)}`,
+      '',
+      `🖥️ *Sistema:* ${dto.nomeSistema}`,
+      `🌍 *Localidade:* ${dto.localidade}`,
+      `💻 *IP:* ${dto.ip}`,
+      '',
+      `📅 *Data:* ${dto.data}`,
+      `⏰ *Hora:* ${dto.hora}`,
+      '',
+      `📊 *Status:* *${dto.status}*`,
+      '',
+      `📞 *Contato:* ${dto.contato}`,
     ].join('\n');
+
 
     // extrai só dígitos do contato
     const tel = dto.contato.replace(/\D/g, '');
@@ -115,6 +121,7 @@ export class EmailService {
     const payload = {
       chat_id: chatId,
       text: msgText,
+      parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: keyboard
       },
@@ -405,4 +412,17 @@ export class EmailService {
   }
 
 
+  private formatarAviso(aviso: string): string {
+    // Ex: "Koch São F. do Sul - NBK01(172.20.76.81):UPS Load Normal (34%)"
+
+    const match = aviso.match(/^(.+?)\s*-\s*.+?\(.*?\):\s*(.+)$/);
+    if (match) {
+      const nomeLoja = match[1].trim();       // "Koch São F. do Sul"
+      const status = match[2].trim();         // "UPS Load Normal (34%)"
+      return `${nomeLoja} | ${status}`;         // "Koch São F. do Sul UPS Load Normal (34%)"
+    }
+
+    // fallback
+    return aviso;
+  }
 }
