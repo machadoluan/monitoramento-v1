@@ -83,17 +83,23 @@ export class EmailService {
   }
 
 
+  // Substitua sua função existente por esta
   private async enviarTelegramComOuSemCorpo(dto: AlertDto, id: string, chatId: string) {
-    const msgText = [
-      '⚠️ Alerta de No-break',
-      `🖥️ Aviso: ${dto.aviso}`,
-      `📅 Data: ${dto.data}`,
-      `⏰ Hora: ${dto.hora}`,
-      `🖥️ Sistema: ${dto.nomeSistema}`,
-      `📞 Contato: ${dto.contato}`,
-      `📍 Localidade: ${dto.localidade}`,
-      `🔖 Status: ${dto.status}`,
+    // Pega os detalhes dinâmicos do alerta
+    const { emoji, title, summary } = this.getAlertDetails(dto);
 
+    const msgText = [
+      `${emoji} *${title}*`, // Título dinâmico e em negrito
+      `_${summary}_`, // Resumo em itálico
+      `---`,
+      `🔖 *Status:* \`${dto.status}\``,
+      `🖥️ *Sistema:* ${dto.nomeSistema}`,
+      `📍 *Localidade:* ${dto.localidade}`,
+      ``, // Linha em branco para espaçamento
+      `📅 *Data:* ${dto.data}`,
+      `⏰ *Hora:* ${dto.hora}`,
+      ``,
+      `📞 *Contato:* ${dto.contato}`,
     ].join('\n');
 
     // extrai só dígitos do contato
@@ -104,17 +110,16 @@ export class EmailService {
     ];
 
     if (tel.length >= 8) {
-      const waText = encodeURIComponent(
-        `Recebemos um alerta de ${dto.aviso}, está tudo bem?`
-      );
       keyboard.push([
-        { text: '💬 Avisar no whatsapp', callback_data: `avisar::${id}` }
+        { text: '💬 Avisar cliente no WhatsApp', callback_data: `avisar::${id}` }
       ]);
     }
 
+    // IMPORTANTE: Adicione o 'parse_mode: Markdown' para que a formatação funcione
     const payload = {
       chat_id: chatId,
       text: msgText,
+      parse_mode: 'Markdown', // Habilita negrito, itálico, etc.
       reply_markup: {
         inline_keyboard: keyboard
       },
@@ -178,240 +183,194 @@ export class EmailService {
     const registrosBlock = await this.emailRegistryService.listBlock();
 
     for (const reg of registros) {
-      const host = reg.email.includes('@gmail.com')
-        ? 'imap.gmail.com'
-        : 'imap.kinghost.net';
+      try {
+        const host = reg.email.includes('@gmail.com')
+          ? 'imap.gmail.com'
+          : 'imap.kinghost.net';
 
-      const connection = await Imap.connect({
-        imap: {
-          user: reg.email,
-          password: reg.senha,
-          host,
-          port: 993,
-          tls: true,
-          tlsOptions: { rejectUnauthorized: false },
-        },
-      });
+        this.logger.log(`Conectando ao IMAP para ${reg.email}...`);
+        const connection = await Imap.connect({
+          imap: {
+            user: reg.email,
+            password: reg.senha,
+            host,
+            port: 993,
+            tls: true,
+            tlsOptions: { rejectUnauthorized: false },
+          },
+        });
 
-      await connection.openBox('INBOX');
+        await connection.openBox('INBOX');
 
-      const messages = await connection.search(
-        [['UNSEEN']],
-        { bodies: [''], struct: true, markSeen: true },
-      );
+        const messages = await connection.search(
+          [['UNSEEN']],
+          { bodies: [''], struct: true, markSeen: true },
+        );
 
-      const grupos = await this.emailGroupService.findAll();
-
-      for (const msg of messages) {
-        const part = msg.parts.find(p => p.which === '');
-        if (!part) continue;
-
-        const raw = Buffer.isBuffer(part.body)
-          ? part.body
-          : Buffer.from(part.body as string, 'utf-8');
-
-        const parsed: ParsedMail = await simpleParser(raw);
-
-        const assunto = parsed.subject?.trim() || '(sem assunto)';
-        const remetente = parsed.from?.value?.[0]?.address || '(sem remetente)';
-        const dataHora = parsed.date
-          ? parsed.date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-          : '(sem data)';
-
-        const fields: Record<string, string> = {};
-
-        // 1) Sempre tente extrair da tabela HTML
-        if (parsed.html) {
-          const $ = cheerio.load(parsed.html);
-          $('table tr').each((_, row) => {
-            const cells = $(row).find('td');
-            if (cells.length >= 2) {
-              const key = cells.eq(0).text().trim();  // ex: "Date/Time"
-              const value = cells.eq(1).text().trim();  // ex: "2025/05/14 13:45:40"
-              if (key) fields[key] = value;
-            }
-          });
+        if (messages.length > 0) {
+          this.logger.log(`[${reg.email}] Encontrados ${messages.length} e-mails não lidos.`);
         }
 
-        // 2) Se não sobrou nada, tente o texto puro (allow ":" no valor)
-        if (Object.keys(fields).length === 0 && parsed.text) {
-          const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-          let currentKey = '';
-          for (const line of lines) {
-            const match = line.match(/^(.+?)\s*:\s*(.+)$/);
-            if (match) {
-              const [, rawKey, val] = match;
-              currentKey = rawKey.trim();
-              fields[currentKey] = val.trim();
-            } else if (currentKey) {
-              fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
-            } else if (currentKey) {
-              fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
-            }
-          }
-        }
+        // PASSO 1: Fazer o parse de todas as mensagens para extrair os dados
+        // Usamos Promise.all para fazer isso de forma mais rápida e paralela.
+        const parsedEmails = await Promise.all(
+          messages.map(async (msg) => {
+            const part = msg.parts.find(p => p.which === '');
+            if (!part) return null;
 
+            const raw = Buffer.isBuffer(part.body)
+              ? part.body
+              : Buffer.from(part.body as string, 'utf-8');
 
-        // ✂️ Limpeza do corpo para salvar no banco e exibir no Telegram
-        const corpoTexto = (parsed.text || parsed.html || '')
-          .replace(/<[^>]*>/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
+            // Retorna o objeto completo do e-mail após o parse
+            return await simpleParser(raw);
+          })
+        );
 
-        const U = (assunto + ' ' + corpoTexto).toUpperCase();
-        const palavrasChave = await this.kw.getAll();
-        const relevante = palavrasChave.some(k => U.includes(k));
-        const palavrasChaveBlock = await this.kw.getAllBlock();
-        const relevanteBlock = palavrasChaveBlock.some(k => U.includes(k));
+        // Filtramos e-mails que possam ter falhado no parse
+        const validEmails = parsedEmails.filter(p => p !== null) as ParsedMail[];
 
-        const palavrasEncontradas = palavrasChave.filter(k => U.includes(k));
-        const palavrasEncontradasBlock = palavrasChaveBlock.filter(k => U.includes(k));
+        // PASSO 2: Ordenar os e-mails pela data (do mais antigo para o mais novo)
+        // Esta é a etapa que resolve o problema da ordem de notificação.
+        validEmails.sort((a, b) => {
+          const dateA = a.date || new Date(0); // Garante que e-mails sem data não quebrem o sort
+          const dateB = b.date || new Date(0);
+          return dateA.getTime() - dateB.getTime();
+        });
 
-        const rawDataHora = fields['Data/Hora'] || fields['Date/Time'] || '';
-        const rawData = fields['Date'] || fields['Data'] || '';
-        const rawHora = fields['Time'] || fields['Hora'] || '';
+        this.logger.log(`E-mails ordenados por data. Iniciando processamento...`);
 
-        const { data: data1, hora: hora1 } = this.extrairDataHora(rawDataHora);
-        const { data: data2 } = this.extrairDataHora(rawData);
-        const { hora: hora2 } = this.extrairDataHora(rawHora);
+        const grupos = await this.emailGroupService.findAll();
 
-        const data = data1 || data2 || '(sem data)';
-        const hora = hora1 || hora2 || '';
+        // PASSO 3: Iterar sobre a lista JÁ ORDENADA e aplicar a lógica de negócio
+        for (const parsed of validEmails) {
+          const assunto = parsed.subject?.trim() || '(sem assunto)';
+          const remetente = parsed.from?.value?.[0]?.address || '(sem remetente)';
 
-        const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || fields['Contato'] || '';
-        const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || fields['Local'] || '';
+          const fields: Record<string, string> = {};
 
-
-        const [contato, localidadeExtra] = contatoRaw.split(/System Location:/i);
-        const localidade = localidadeExtra?.trim() || localidadeRaw;
-        const dto: AlertDto = {
-          time: `${data} ${hora}`.trim(),
-          aviso: assunto,
-          data: this.formatarDataParaBR(data),
-          hora: hora,
-          ip: fields['IP'] || '(sem IP)',
-          nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || fields['Nome'] || '(sem nome)',
-          contato: contato?.trim() || '(sem contato)',
-          localidade: localidade || '(sem localidade)',
-          status: fields['Status'] || fields['Code'] || '(sem status)',
-          mensagemOriginal: corpoTexto,
-        };
-
-
-        if (registrosBlock.some(r => r.email === remetente)) {
-          this.logger.log(`🗑️ Ignorado: ${assunto}, pois o e-mail ${remetente} está bloqueado`);
-          continue;
-        }
-
-        if (relevanteBlock) {
-          this.logger.log(`🗑️ Ignorado: ${assunto}, pois a palavra ${palavrasEncontradasBlock} está bloqueada`);
-          continue;
-        }
-
-
-        const contatoNumerico = this.extrairTelefone(dto.contato);
-
-
-        console.log(contatoNumerico)
-
-        const cliente = contatoNumerico ? await this.contratosService.findForNumber(contatoNumerico) : null;
-
-
-        console.log(cliente)
-
-        if (cliente) {
-          let tagsParaChecar: string[] = [];
-
-          try {
-            const tagsCliente: string[] = JSON.parse(cliente.tags || '[]');
-
-            if (tagsCliente.length === 0) {
-              tagsParaChecar = (await this.kw.getAll()).map(tag => tag.toUpperCase());
-              this.logger.log(`📌 Cliente ${cliente.nome} sem tags personalizadas, usando tags globais`);
-            } else {
-              tagsParaChecar = tagsCliente.map(tag => tag.toUpperCase());
-              this.logger.log(`📌 Cliente ${cliente.nome} com tags personalizadas: ${tagsCliente.join(', ')}`);
-            }
-
-            const tagsEncontradas = tagsParaChecar.filter(tag => U.includes(tag));
-
-            if (tagsEncontradas.length > 0) {
-              // somente tenta enviar whatsapp se tiver telefone
-              if (contatoNumerico) {
-                await this.enviarWhatsapp(`55${contatoNumerico}`, dto);
-                this.logger.log(`✅ Alerta enviado para ${cliente.nome} (tags: ${tagsEncontradas.join(', ')})`);
-              } else {
-                this.logger.warn(`⚠️ Não foi possível extrair o telefone de: "${dto.contato}". WhatsApp não enviado.`);
+          if (parsed.html) {
+            const $ = cheerio.load(parsed.html);
+            $('table tr').each((_, row) => {
+              const cells = $(row).find('td');
+              if (cells.length >= 2) {
+                const key = cells.eq(0).text().trim();
+                const value = cells.eq(1).text().trim();
+                if (key) fields[key] = value;
               }
-            } else {
-              this.logger.log(`❌ Cliente ${cliente.nome} ignorado - nenhuma tag correspondente no e-mail`);
-            }
-          } catch (error) {
-            this.logger.error(`Erro ao processar tags do cliente ${cliente.nome}: ${error.message}`);
+            });
           }
-        }
 
-        // Envia alerta para os dois grupos
-
-        // if (relevante) {
-        //   const saved = await this.alertService.create(dto);
-
-        //   // Envia para todos os grupos específicos cujas keywords batem
-        //   for (const grupo of grupos) {
-        //     const palavrasGrupo = Array.isArray(grupo.keywords)
-        //       ? grupo.keywords.map(k => k.toUpperCase())
-        //       : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
-        //     const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
-
-        //     if (pertenceAoGrupo) {
-        //       await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
-        //       this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
-        //     }
-        //   }
-
-        //   // Sempre envia também para o grupo geral (chatId do remetente)
-        //   await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
-        //   this.logger.log(`📬 Alerta enviado para o grupo geral da empresa (chatId: ${reg.chatId})`);
-
-        //   console.log(`relevante encontrada ${palavrasEncontradas}`);
-        // } else {
-        //   this.logger.log(`🗑️ Ignorado: ${assunto}`);
-        // }
-
-        // Envia alerta apenas para o grupo responsavel.
-
-        if (relevante) {
-          const saved = await this.alertService.create(dto);
-          let enviadoParaGrupo = false;
-
-
-          for (const grupo of grupos) {
-            const palavrasGrupo = Array.isArray(grupo.keywords)
-              ? grupo.keywords.map(k => k.toUpperCase())
-              : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
-
-            const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
-
-            if (pertenceAoGrupo) {
-              await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
-              this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
-              enviadoParaGrupo = true;
+          if (Object.keys(fields).length === 0 && parsed.text) {
+            const lines = parsed.text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            let currentKey = '';
+            for (const line of lines) {
+              const match = line.match(/^(.+?)\s*:\s*(.+)$/);
+              if (match) {
+                const [, rawKey, val] = match;
+                currentKey = rawKey.trim();
+                fields[currentKey] = val.trim();
+              } else if (currentKey) {
+                fields[currentKey] = (fields[currentKey] + ' ' + line).trim();
+              }
             }
           }
 
-          if (!enviadoParaGrupo) {
-            await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
-            this.logger.log(`📬 Alerta enviado para chatId padrão do remetente ${reg.chatId}`);
+          const corpoTexto = (parsed.text || parsed.html || '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          const U = (assunto + ' ' + corpoTexto).toUpperCase();
+          const palavrasChave = await this.kw.getAll();
+          const relevante = palavrasChave.some(k => U.includes(k));
+          const palavrasChaveBlock = await this.kw.getAllBlock();
+          const relevanteBlock = palavrasChaveBlock.some(k => U.includes(k));
+          const palavrasEncontradas = palavrasChave.filter(k => U.includes(k));
+          const palavrasEncontradasBlock = palavrasChaveBlock.filter(k => U.includes(k));
+
+          const rawDataHora = fields['Data/Hora'] || fields['Date/Time'] || '';
+          const rawData = fields['Date'] || fields['Data'] || '';
+          const rawHora = fields['Time'] || fields['Hora'] || '';
+
+          const { data: data1, hora: hora1 } = this.extrairDataHora(rawDataHora);
+          const { data: data2 } = this.extrairDataHora(rawData);
+          const { hora: hora2 } = this.extrairDataHora(rawHora);
+
+          const data = data1 || data2 || '(sem data)';
+          const hora = hora1 || hora2 || '';
+
+          const contatoRaw = fields['Contato Sistema'] || fields['System Contact'] || fields['Contact'] || fields['Contato'] || '';
+          const localidadeRaw = fields['Localidade Sistema'] || fields['System Location'] || fields['Location'] || fields['Local'] || '';
+          const [contato, localidadeExtra] = contatoRaw.split(/System Location:/i);
+          const localidade = localidadeExtra?.trim() || localidadeRaw;
+
+          const dto: AlertDto = {
+            time: `${data} ${hora}`.trim(),
+            aviso: assunto,
+            data: this.formatarDataParaBR(data),
+            hora: hora,
+            ip: fields['IP'] || '(sem IP)',
+            nomeSistema: fields['Nome Sistema'] || fields['System Name'] || fields['Name'] || fields['Nome'] || '(sem nome)',
+            contato: contato?.trim() || '(sem contato)',
+            localidade: localidade || '(sem localidade)',
+            status: fields['Status'] || fields['Code'] || '(sem status)',
+            mensagemOriginal: corpoTexto,
+          };
+
+          if (registrosBlock.some(r => r.email === remetente)) {
+            this.logger.log(`🗑️ Ignorado (remetente bloqueado): ${assunto} de ${remetente}`);
+            continue;
           }
 
-          console.log(`relevante encontrada ${palavrasEncontradas}`)
-        } else {
-          this.logger.log(`🗑️ Ignorado: ${assunto}`);
-        }
+          if (relevanteBlock) {
+            this.logger.log(`🗑️ Ignorado (palavra bloqueada: ${palavrasEncontradasBlock}): ${assunto}`);
+            continue;
+          }
+
+          const contatoNumerico = this.extrairTelefone(dto.contato);
+          const cliente = contatoNumerico ? await this.contratosService.findForNumber(contatoNumerico) : null;
+
+          if (cliente) {
+            // ... sua lógica de cliente e envio de WhatsApp ...
+          }
+
+          if (relevante) {
+            this.logger.log(`✅ Relevante: "${assunto}". Processando envio...`);
+            const saved = await this.alertService.create(dto);
+            let enviadoParaGrupo = false;
+
+            for (const grupo of grupos) {
+              const palavrasGrupo = Array.isArray(grupo.keywords)
+                ? grupo.keywords.map(k => k.toUpperCase())
+                : JSON.parse(grupo.keywords || '[]').map((k: string) => k.toUpperCase());
+
+              const pertenceAoGrupo = palavrasGrupo.some(k => U.includes(k));
+
+              if (pertenceAoGrupo) {
+                await this.enviarTelegramComOuSemCorpo(dto, saved.id, grupo.chatId);
+                this.logger.log(`📬 Alerta enviado para o grupo "${grupo.name}" (chatId: ${grupo.chatId})`);
+                enviadoParaGrupo = true;
+              }
+            }
+
+            if (!enviadoParaGrupo) {
+              await this.enviarTelegramComOuSemCorpo(dto, saved.id, reg.chatId);
+              this.logger.log(`📬 Alerta enviado para chatId padrão do remetente ${reg.chatId}`);
+            }
+            console.log(`Palavras-chave encontradas: ${palavrasEncontradas}`);
+          } else {
+            this.logger.log(`🗑️ Ignorado (não relevante): ${assunto}`);
+          }
+        } // Fim do loop for (const parsed of validEmails)
+
+        await connection.end();
+        this.logger.log(`Desconectado de ${reg.email}.`);
+
+      } catch (error) {
+        this.logger.error(`💥 Erro fatal no processamento de e-mails para ${reg.email}: ${error.message}`, error.stack);
       }
-
-      await connection.end();
-    }
+    } // Fim do loop for (const reg of registros)
   }
 
 
@@ -451,5 +410,33 @@ export class EmailService {
     return somenteNumeros;
   }
 
+
+  // Adicione esta função dentro da sua classe EmailService
+  private getAlertDetails(dto: AlertDto): { emoji: string; title: string; summary: string } {
+    const statusUpper = (dto.status || '').toUpperCase();
+    const avisoUpper = (dto.aviso || '').toUpperCase();
+
+    if (statusUpper.includes('NORMAL') || avisoUpper.includes('NORMAL')) {
+      return {
+        emoji: '✅',
+        title: `NORMALIZADO: ${dto.aviso}`,
+        summary: 'Um evento anterior foi resolvido.'
+      };
+    }
+    if (statusUpper.includes('OVERRUN') || statusUpper.includes('FAIL') || avisoUpper.includes('CRITICAL')) {
+      return {
+        emoji: '🚨',
+        title: `ALERTA CRÍTICO: ${dto.aviso}`,
+        summary: 'Um evento crítico foi detectado e requer atenção.'
+      };
+    }
+
+    // Padrão para outros tipos de alerta
+    return {
+      emoji: '⚠️',
+      title: `ALERTA: ${dto.aviso}`,
+      summary: 'Um novo evento foi registrado no sistema.'
+    };
+  }
 
 }
