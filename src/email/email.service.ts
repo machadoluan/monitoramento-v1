@@ -84,6 +84,9 @@ export class EmailService {
 
 
   private async enviarTelegramComOuSemCorpo(dto: AlertDto, id: string, chatId: string) {
+    const statusCritico = ['overrun', 'acima dos limites'];
+    const isCritico = statusCritico.some(p => dto.status.toLowerCase().includes(p));
+    const statusEmoji = isCritico ? '🔴' : '🟢'; // verde para normal, vermelho para crítico
     const msgText = [
       ' *PWM BOT - Alerta de No-break* ',
       '',
@@ -96,7 +99,7 @@ export class EmailService {
       `📅 *Data:* ${dto.data}`,
       `⏰ *Hora:* ${dto.hora}`,
       '',
-      `📊 *Status:* *${dto.status}*`,
+      `📊 *Status:* ${statusEmoji} *${dto.status}*`,
       '',
       `📞 *Contato:* ${dto.contato}`,
     ].join('\n');

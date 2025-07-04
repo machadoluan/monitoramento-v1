@@ -18,9 +18,18 @@ export class Equipamento {
   @Column()
   contato: string;
 
+  @Column()
+  endereco: string;
+
   @Column({ type: 'timestamp' })
   ultimaAtualizacao: Date;
 
   @Column({ default: 'online' })
   status: 'online' | 'offline';
+
+  @Column({ type: 'float', nullable: true })
+  lat: number;
+
+  @Column({ type: 'float', nullable: true })
+  lon: number;
 }

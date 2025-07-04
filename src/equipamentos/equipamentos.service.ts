@@ -7,12 +7,14 @@ import { simpleParser } from 'mailparser';
 import * as cheerio from 'cheerio';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as moment from 'moment-timezone';
+import { GeocodificacaoService } from './geocodificacao.service';
 
 @Injectable()
 export class EquipamentosService {
     constructor(
         @InjectRepository(Equipamento)
         private readonly repo: Repository<Equipamento>,
+        private readonly geocodificacaoService: GeocodificacaoService,
     ) { }
 
     async registerOrUpdate(data: Partial<Equipamento>): Promise<Equipamento> {
@@ -50,7 +52,7 @@ export class EquipamentosService {
         return this.repo.find({ order: { nome: 'ASC' } });
     }
 
-    @Cron('*/10 * * * * *') // A cada 10 segundos
+    @Cron(CronExpression.EVERY_HOUR) // A cada 10 segundos
     async sincronizarEquipamentosPorEmail(): Promise<void> {
         console.log('⏳ Buscando novos e-mails...');
 
@@ -155,4 +157,26 @@ export class EquipamentosService {
             }
         }
     }
+
+    async alterarEquipamento(id: number, endereco: string): Promise<any> {
+        const equipamento = await this.repo.findOne({ where: { id } });
+        if (!equipamento) {
+            throw new Error('Equipamento não encontrado');
+        }
+
+        // Busca nova geolocalização
+        const coordenadas = await this.geocodificacaoService.buscarCoordenadas(endereco);
+
+        // Atualiza campos
+        equipamento.endereco = endereco;
+        if (typeof coordenadas?.lat === 'number') {
+            equipamento.lat = coordenadas.lat;
+        }
+        if (typeof coordenadas?.lon === 'number') {
+            equipamento.lon = coordenadas.lon;
+        }
+
+        return this.repo.save(equipamento);
+    }
+
 }
