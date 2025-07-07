@@ -1,5 +1,4 @@
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn, Unique } from 'typeorm';
-import { LogEquipamento } from './log-equipamento.entity';
 
 @Unique(['nome', 'localidade', 'ip'])
 @Entity('equipamentos')
@@ -34,6 +33,4 @@ export class Equipamento {
   @Column({ type: 'float', nullable: true })
   lon: number;
 
-  @OneToMany(() => LogEquipamento, log => log.equipamento)
-  logs: LogEquipamento[];
 }

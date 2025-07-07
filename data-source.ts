@@ -31,6 +31,7 @@ export const AppDataSource = new DataSource({
     EmailGroup,
     Equipamento
   ],
-  migrations: ['src/migrations/*.ts'], // você pode mudar o caminho
+  migrations: [process.env.NODE_ENV === 'production' ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
+
   synchronize: false,
 });
