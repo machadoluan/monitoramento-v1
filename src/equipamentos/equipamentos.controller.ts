@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { EquipamentosService } from './equipamentos.service';
 
 @Controller('equipamentos')
@@ -23,5 +23,17 @@ export class EquipamentosController {
         }
 
         return this.equipamentoSerice.alterarEquipamento(equipamentoId, endereco);
+    }
+
+    @Delete(':id')
+    async deleteEquipamento(
+        @Param('id') id: number
+    ) {
+        return this.equipamentoSerice.deleteEquipamento(id)
+    }
+
+    @Post('deleteAll')
+    async deleteVariosEquipamentos(@Body('ids') ids: number[]) {
+        return this.equipamentoSerice.deleteEquipamentoAll(ids);
     }
 }

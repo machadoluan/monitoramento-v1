@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Equipamento } from './equipamentos.entity';
 import { Repository } from 'typeorm';
@@ -179,4 +179,28 @@ export class EquipamentosService {
         return this.repo.save(equipamento);
     }
 
+    async deleteEquipamento(id: number): Promise<{ message: string }> {
+        const result = await this.repo.delete(id);
+
+        if (result.affected === 0) {
+            throw new NotFoundException('Equipamento não encontrado');
+        }
+
+        return { message: 'Equipamento apagado com sucesso' };
+    }
+
+
+    async deleteEquipamentoAll(ids: number[]): Promise<{ message: string }> {
+        if (!ids || ids.length === 0) {
+            throw new NotFoundException('Nenhum id passado.');
+        }
+    
+        const result = await this.repo.delete(ids);
+    
+        if (result.affected === 0) {
+            throw new NotFoundException('Equipamento(s) não encontrado(s)');
+        }
+    
+        return { message: 'Equipamento(s) apagado(s) com sucesso' };
+    }
 }
