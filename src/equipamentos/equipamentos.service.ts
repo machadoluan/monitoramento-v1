@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Equipamento } from './equipamentos.entity';
-import { Repository } from 'typeorm';
+import { DeepPartial, In, Repository } from 'typeorm';
 import * as Imap from 'imap-simple';
 import { simpleParser } from 'mailparser';
 import * as cheerio from 'cheerio';
@@ -18,25 +18,42 @@ export class EquipamentosService {
     ) { }
 
     async registerOrUpdate(data: Partial<Equipamento>): Promise<Equipamento> {
+        const nome = (data.nome || '').trim();
+        const localidade = (data.localidade || '').trim();
+        const ip = (data.ip || '').trim();
+
         const existente = await this.repo.findOne({
-            where: {
-                nome: data.nome,
-                localidade: data.localidade,
-                ip: data.ip,
-            },
+            where: { nome, localidade },
         });
 
         if (existente) {
-            existente.ultimaAtualizacao = data.ultimaAtualizacao || new Date();
+            console.log(`🔄 Atualizando existente: ${nome}`);
+
+            if (existente.apagado) {
+                console.log(`🚫 Equipamento ${nome} está marcado como apagado. Ignorando e-mail.`);
+                return existente;
+            }
+
+            if (data.ultimaAtualizacao) {
+                existente.ultimaAtualizacao = data.ultimaAtualizacao;
+            }
+
             existente.contato = data.contato || existente.contato;
             existente.status = 'online';
             return this.repo.save(existente);
+
         } else {
-            return this.repo.save({
-                ...data,
+            console.log(`🆕 Criando novo equipamento:`, nome, ip, localidade);
+
+            const novo: DeepPartial<Equipamento> = {
+                nome,
+                localidade,
+                ip,
+                contato: data.contato,
                 status: 'online',
-                ultimaAtualizacao: data.ultimaAtualizacao || new Date(),
-            });
+                ultimaAtualizacao: data.ultimaAtualizacao,
+            };
+            return this.repo.save(novo);
         }
     }
 
@@ -49,10 +66,10 @@ export class EquipamentosService {
     }
 
     async findAll(): Promise<Equipamento[]> {
-        return this.repo.find({ order: { nome: 'ASC' } });
+        return this.repo.find({ where: { apagado: false }, order: { nome: 'ASC' } });
     }
 
-    @Cron(CronExpression.EVERY_HOUR) // A cada 10 segundos
+    @Cron(CronExpression.EVERY_10_SECONDS) // A cada 10 segundos
     async sincronizarEquipamentosPorEmail(): Promise<void> {
         console.log('⏳ Buscando novos e-mails...');
 
@@ -115,8 +132,8 @@ export class EquipamentosService {
                 }
 
                 const dataEmailTexto = fields['Date/Time'] || fields['Data/Hora'];
-                const ultimaAtualizacao = dataEmailTexto
-                    ? moment.tz(dataEmailTexto, 'YYYY/MM/DD HH:mm:ss', 'America/Sao_Paulo').toDate()
+                const ultimaAtualizacao = msg.attributes.date
+                    ? moment(msg.attributes.date).tz('America/Sao_Paulo').toDate()
                     : new Date();
 
                 await this.registerOrUpdate({
@@ -135,26 +152,25 @@ export class EquipamentosService {
         }
     }
 
-    @Cron(CronExpression.EVERY_HOUR)
-    async verificarEquipamentosInativos() {
+    @Cron(CronExpression.EVERY_10_SECONDS)
+    async verificarEquipamentosInativos(): Promise<void> {
         const equipamentos = await this.repo.find();
-        const agora = new Date();
+        const agora = Date.now();
 
         for (const eq of equipamentos) {
-            const diff = agora.getTime() - new Date(eq.ultimaAtualizacao).getTime();
-            const offline = diff > 2 * 24 * 60 * 60 * 1000; // 2 dias
+            const diff = agora - new Date(eq.ultimaAtualizacao).getTime();
+            const offline = diff > 2 * 24 * 60 * 60 * 1000;
 
             if (offline && eq.status !== 'offline') {
-                eq.status = 'offline';
-                await this.repo.save(eq);
+                await this.repo.update(eq.id, { status: 'offline' });
                 console.log(`❌ ${eq.nome} marcado como OFFLINE`);
             }
 
             if (!offline && eq.status !== 'online') {
-                eq.status = 'online';
-                await this.repo.save(eq);
+                await this.repo.update(eq.id, { status: 'online' });
                 console.log(`✅ ${eq.nome} voltou para ONLINE`);
             }
+
         }
     }
 
@@ -162,6 +178,13 @@ export class EquipamentosService {
         const equipamento = await this.repo.findOne({ where: { id } });
         if (!equipamento) {
             throw new Error('Equipamento não encontrado');
+        }
+
+        if(!endereco) {
+            equipamento.endereco = ''
+            equipamento.lat = 0
+            equipamento.lon = 0
+
         }
 
         // Busca nova geolocalização
@@ -176,17 +199,21 @@ export class EquipamentosService {
             equipamento.lon = coordenadas.lon;
         }
 
+        console.log(equipamento)
+
         return this.repo.save(equipamento);
     }
 
     async deleteEquipamento(id: number): Promise<{ message: string }> {
-        const result = await this.repo.delete(id);
-
-        if (result.affected === 0) {
+        const equipamento = await this.repo.findOne({ where: { id } });
+        if (!equipamento) {
             throw new NotFoundException('Equipamento não encontrado');
         }
 
-        return { message: 'Equipamento apagado com sucesso' };
+        equipamento.apagado = true;
+        await this.repo.save(equipamento);
+
+        return { message: 'Equipamento marcado como apagado' };
     }
 
 
@@ -194,13 +221,19 @@ export class EquipamentosService {
         if (!ids || ids.length === 0) {
             throw new NotFoundException('Nenhum id passado.');
         }
-    
-        const result = await this.repo.delete(ids);
-    
-        if (result.affected === 0) {
+
+        const equipamentos = await this.repo.findBy({ id: In(ids) });
+        if (!equipamentos.length) {
             throw new NotFoundException('Equipamento(s) não encontrado(s)');
         }
-    
-        return { message: 'Equipamento(s) apagado(s) com sucesso' };
+
+        for (const equipamento of equipamentos) {
+            equipamento.apagado = true;
+        }
+
+        await this.repo.save(equipamentos);
+
+        return { message: 'Equipamento(s) marcado(s) como apagado(s)' };
     }
+
 }

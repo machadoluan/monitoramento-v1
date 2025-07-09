@@ -6,21 +6,16 @@ import axios from 'axios';
 export class GeocodificacaoService {
     async buscarCoordenadas(endereco: string): Promise<{ lat: number; lon: number } | null> {
         try {
-            const response = await axios.get('https://nominatim.openstreetmap.org/search', {
+            const response = await axios.get('https://photon.komoot.io/api/', {
                 params: {
                     q: endereco,
-                    format: 'json',
-                    addressdetails: 1,
                     limit: 1
-                },
-                headers: {
-                    'User-Agent': 'MeuSistemaDeMonitoramento/1.0'
                 }
             });
 
-            if (response.data.length > 0) {
-                const { lat, lon } = response.data[0];
-                return { lat: parseFloat(lat), lon: parseFloat(lon) };
+            if (response.data.features && response.data.features.length > 0) {
+                const [lon, lat] = response.data.features[0].geometry.coordinates;
+                return { lat, lon };
             }
 
             return null;
@@ -29,6 +24,4 @@ export class GeocodificacaoService {
             return null;
         }
     }
-
-    
 }

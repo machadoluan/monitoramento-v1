@@ -33,4 +33,6 @@ export class Equipamento {
   @Column({ type: 'float', nullable: true })
   lon: number;
 
+  @Column({ default: false })
+  apagado: boolean;
 }
