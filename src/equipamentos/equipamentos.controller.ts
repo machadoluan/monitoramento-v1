@@ -14,15 +14,15 @@ export class EquipamentosController {
     @Put(':id/endereco')
     async atualizarEndereco(
         @Param('id') id: string,
-        @Body('endereco') endereco: string
+        @Body('dadosNovos') dadosNovos: any
     ) {
-        console.log(`Atualizando endereço do equipamento com ID: ${id} para: ${endereco}`);
+        console.log(`Atualizando endereço do equipamento com ID: ${id} para: ${dadosNovos}`);
         const equipamentoId = parseInt(id);
         if (isNaN(equipamentoId)) {
             throw new Error('ID inválido');
         }
 
-        return this.equipamentoSerice.alterarEquipamento(equipamentoId, endereco);
+        return this.equipamentoSerice.alterarEquipamento(equipamentoId, dadosNovos);
     }
 
     @Delete(':id')

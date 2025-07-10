@@ -174,30 +174,31 @@ export class EquipamentosService {
         }
     }
 
-    async alterarEquipamento(id: number, endereco: string): Promise<any> {
+    async alterarEquipamento(id: number, dadosNovos: any): Promise<any> {
         const equipamento = await this.repo.findOne({ where: { id } });
         if (!equipamento) {
             throw new Error('Equipamento não encontrado');
         }
 
-        if(!endereco) {
+        if (!dadosNovos.endereco) {
             equipamento.endereco = ''
             equipamento.lat = 0
             equipamento.lon = 0
-
         }
 
         // Busca nova geolocalização
-        const coordenadas = await this.geocodificacaoService.buscarCoordenadas(endereco);
+        const coordenadas = await this.geocodificacaoService.buscarCoordenadas(dadosNovos.endereco);
 
         // Atualiza campos
-        equipamento.endereco = endereco;
+        equipamento.endereco = dadosNovos.endereco;
         if (typeof coordenadas?.lat === 'number') {
             equipamento.lat = coordenadas.lat;
         }
         if (typeof coordenadas?.lon === 'number') {
             equipamento.lon = coordenadas.lon;
         }
+
+        equipamento.observacao = dadosNovos.observacao
 
         console.log(equipamento)
 

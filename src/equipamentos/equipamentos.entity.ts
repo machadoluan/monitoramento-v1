@@ -35,4 +35,10 @@ export class Equipamento {
 
   @Column({ default: false })
   apagado: boolean;
+
+  @Column()
+  observacao: string
+
+  @Column({default: false})
+  contrato: boolean;
 }
