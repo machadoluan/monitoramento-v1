@@ -187,18 +187,22 @@ export class EquipamentosService {
         }
 
         // Busca nova geolocalização
-        const coordenadas = await this.geocodificacaoService.buscarCoordenadas(dadosNovos.endereco);
+        if (dadosNovos.endereco) {
+            const coordenadas = await this.geocodificacaoService.buscarCoordenadas(dadosNovos.endereco);
 
-        // Atualiza campos
-        equipamento.endereco = dadosNovos.endereco;
-        if (typeof coordenadas?.lat === 'number') {
-            equipamento.lat = coordenadas.lat;
+            equipamento.endereco = dadosNovos.endereco;
+
+            if (typeof coordenadas?.lat === 'number') {
+                equipamento.lat = coordenadas.lat;
+            }
+            if (typeof coordenadas?.lon === 'number') {
+                equipamento.lon = coordenadas.lon;
+            }
         }
-        if (typeof coordenadas?.lon === 'number') {
-            equipamento.lon = coordenadas.lon;
-        }
+
 
         equipamento.observacao = dadosNovos.observacao
+        equipamento.contrato = dadosNovos.contrato
 
         console.log(equipamento)
 
