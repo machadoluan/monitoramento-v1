@@ -15,10 +15,12 @@ import { ContratosService } from 'src/contratos/contratos.service';
 import { ContratosModule } from 'src/contratos/contratos.module';
 import { EmailGroup } from '../email-group/email-group.entity';
 import { EmailGroupService } from 'src/email-group/email-group.service';
+import { AlertaAtivoService } from 'src/equipamentos/alerta-ativo.service';
+import { AlertsCriticos } from 'src/equipamentos/alets-criticos.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AlertEntity, EmailEntity, EmailBlockEntity, EmailGroup]),  
+    TypeOrmModule.forFeature([AlertEntity, EmailEntity, EmailBlockEntity, EmailGroup, AlertsCriticos]),  
     KeywordModule,                          
     AlertModule,   
     ContratosModule
@@ -26,7 +28,8 @@ import { EmailGroupService } from 'src/email-group/email-group.service';
   providers: [
     EmailService,
     EmailRegistryService,
-    EmailGroupService
+    EmailGroupService,
+    AlertaAtivoService
   ],
   controllers: [EmailController],
   exports: [EmailService, EmailRegistryService],

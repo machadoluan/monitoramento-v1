@@ -11,6 +11,8 @@ import { Contratos } from './src/contratos/contratos.entity';
 import { EmailGroup } from './src/email-group/email-group.entity';
 import { Equipamento } from './src/equipamentos/equipamentos.entity';
 import * as dotenv from 'dotenv';
+import { AlertsCriticos } from './src/equipamentos/alets-criticos.entity';
+
 
 dotenv.config();
 
@@ -29,7 +31,8 @@ export const AppDataSource = new DataSource({
     EmailBlockEntity,
     Contratos,
     EmailGroup,
-    Equipamento
+    Equipamento,
+    AlertsCriticos
   ],
   migrations: [process.env.NODE_ENV === 'production' ? 'dist/migrations/*.js' : 'src/migrations/*.ts'],
 

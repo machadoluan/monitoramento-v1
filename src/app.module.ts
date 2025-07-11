@@ -23,6 +23,8 @@ import { EmailGroupModule } from './email-group/email-group.module';
 import { EmailGroup } from './email-group/email-group.entity';
 import { EquipamentosModule } from './equipamentos/equipamentos.module';
 import { Equipamento } from './equipamentos/equipamentos.entity';
+import { AlertsCriticos } from './equipamentos/alets-criticos.entity';
+
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -34,7 +36,7 @@ import { Equipamento } from './equipamentos/equipamentos.entity';
         username: configService.get<string>('DATABASE_USER'),
         password: configService.get<string>('DATABASE_PASSWORD'),
         database: configService.get<string>('DATABASE_NAME'),
-        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos, EmailGroup, Equipamento],
+        entities: [AlertEntity, Keyword, EmailEntity, BlockWord, EmailBlockEntity, Contratos, EmailGroup, Equipamento, AlertsCriticos],
         autoLoadEntities: true,
         synchronize: false,
       }),

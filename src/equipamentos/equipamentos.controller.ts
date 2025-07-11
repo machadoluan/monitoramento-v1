@@ -1,10 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { EquipamentosService } from './equipamentos.service';
+import { AlertaAtivoService } from './alerta-ativo.service';
 
 @Controller('equipamentos')
 export class EquipamentosController {
 
-    constructor(private readonly equipamentoSerice: EquipamentosService) { }
+    constructor(private readonly equipamentoSerice: EquipamentosService, private readonly alertaAtivoService: AlertaAtivoService) { }
 
     @Get()
     async list() {
@@ -35,5 +36,10 @@ export class EquipamentosController {
     @Post('deleteAll')
     async deleteVariosEquipamentos(@Body('ids') ids: number[]) {
         return this.equipamentoSerice.deleteEquipamentoAll(ids);
+    }
+
+    @Get('criticos-ativos')
+    async listAtivos() {
+        return this.alertaAtivoService.listarAtivos()
     }
 }

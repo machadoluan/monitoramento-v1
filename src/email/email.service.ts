@@ -13,6 +13,7 @@ import { EmailRegistryService } from './email-registry.service';
 import * as cheerio from 'cheerio';
 import { ContratosService } from 'src/contratos/contratos.service';
 import { EmailGroupService } from 'src/email-group/email-group.service';
+import { AlertaAtivoService } from 'src/equipamentos/alerta-ativo.service';
 
 dotenv.config();
 
@@ -24,7 +25,8 @@ export class EmailService {
     private readonly alertService: AlertService,
     private readonly emailRegistryService: EmailRegistryService,
     private readonly contratosService: ContratosService,
-    private readonly emailGroupService: EmailGroupService
+    private readonly emailGroupService: EmailGroupService,
+    private readonly alertaAtivoService: AlertaAtivoService,
   ) { }
 
   private processing = false;
@@ -303,6 +305,28 @@ export class EmailService {
           status: fields['Status'] || fields['Code'] || '(sem status)',
           mensagemOriginal: corpoTexto,
         };
+
+        const statusLower = dto.status.toLowerCase();
+
+        const entrouBypass = statusLower.includes('entrando em modo bypass') ||
+          statusLower.includes('entering bypass mode');
+
+        const saiuBypass = statusLower.includes('retornando do modo bypass') ||
+          statusLower.includes('return from bypass mode');
+
+
+        console.log(entrouBypass)
+        console.log(saiuBypass)
+
+        if (entrouBypass) {
+          this.alertaAtivoService.criarOuAtualizar(dto)
+          this.logger.log(`🚨 Alerta crítico salvo: ${dto.nomeSistema} - ${dto.status}`);
+        }
+
+        if (saiuBypass) {
+          this.alertaAtivoService.removerSeExistir(dto.nomeSistema)
+          this.logger.log(`✅ Alerta resolvido removido: ${dto.nomeSistema}`);
+        }
 
         if (
           registrosBlock.some(r => r.email === remetente) ||
