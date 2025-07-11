@@ -86,7 +86,7 @@ export class EmailService {
 
 
   private async enviarTelegramComOuSemCorpo(dto: AlertDto, id: string, chatId: string) {
-    const statusCritico = ['overrun', 'acima dos limites'];
+    const statusCritico = ['overrun', 'acima dos limites', 'entering bypass mode', 'entrando em modo bypass'];
     const isCritico = statusCritico.some(p => dto.status.toLowerCase().includes(p));
     const statusEmoji = isCritico ? '🔴' : '🟢'; // verde para normal, vermelho para crítico
     const msgText = [

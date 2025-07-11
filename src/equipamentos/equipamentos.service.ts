@@ -180,14 +180,18 @@ export class EquipamentosService {
             throw new Error('Equipamento não encontrado');
         }
 
+        // Se não for enviado nenhum endereço, limpa os campos
         if (!dadosNovos.endereco) {
-            equipamento.endereco = ''
-            equipamento.lat = 0
-            equipamento.lon = 0
+            equipamento.endereco = '';
+            equipamento.lat = 0;
+            equipamento.lon = 0;
         }
 
-        // Busca nova geolocalização
-        if (dadosNovos.endereco) {
+        // Se foi enviado um endereço diferente do atual, busca nova geolocalização
+        if (
+            dadosNovos.endereco &&
+            dadosNovos.endereco.trim() !== equipamento.endereco?.trim()
+        ) {
             const coordenadas = await this.geocodificacaoService.buscarCoordenadas(dadosNovos.endereco);
 
             equipamento.endereco = dadosNovos.endereco;
@@ -200,11 +204,11 @@ export class EquipamentosService {
             }
         }
 
+        // Atualiza outros campos independentemente
+        equipamento.observacao = dadosNovos.observacao;
+        equipamento.contrato = dadosNovos.contrato;
 
-        equipamento.observacao = dadosNovos.observacao
-        equipamento.contrato = dadosNovos.contrato
-
-        console.log(equipamento)
+        console.log(equipamento);
 
         return this.repo.save(equipamento);
     }

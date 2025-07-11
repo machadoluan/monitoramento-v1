@@ -6,10 +6,15 @@ import { AlertEntity } from './alert.entity';
 
 @Controller('alerts')
 export class AlertsController {
-  constructor(private readonly alertService: AlertService) {}
+  constructor(private readonly alertService: AlertService) { }
 
   @Get()
-  getAlerts():  Promise<AlertEntity[]> {
+  getAlerts(): Promise<AlertEntity[]> {
     return this.alertService.findAll();
+  }
+
+  @Get("report")
+  getDailyReport(): Promise<AlertEntity[]> {
+    return this.alertService.getDailyReport();
   }
 }   
